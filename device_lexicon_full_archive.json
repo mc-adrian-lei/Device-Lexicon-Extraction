@@ -1,0 +1,191 @@
+{
+  "metadata": {
+    "version": "device_lexicon_beta_v2.1",
+    "process_date": "2025-12-04",
+    "device_class": "Samsung Galaxy A51 (SM-A515U1)",
+    "boot_context": "recovery_mode_factory_reset",
+    "images_total": 10,
+    "images_processed": 9,
+    "properties_total": 59,
+    "components_total": 20
+  },
+  "device_fingerprint": {
+    "model": "SM-A515U1",
+    "product": "a51",
+    "soc": "exynos9611",
+    "build_id": "TPIA.220624.014",
+    "bootloader": "A515U1UESCFXA2",
+    "fingerprint": "samsung/a51ue/a51u:13/TP1A.220624.014/A515U1UESCFXA2:user/release-keys",
+    "api_level": 33,
+    "security_patch": "2024-01-01"
+  },
+  "security_state": {
+    "bootloader_locked": true,
+    "partitions_locked": true,
+    "secure_flag": "1",
+    "build_type": "user",
+    "build_tags": "release-keys",
+    "perf_harden": "1"
+  },
+  "recovery_evidence": {
+    "wipe_data_initiated": true,
+    "wipe_cache_initiated": true,
+    "factory_reset_in_progress": true,
+    "reboot_recovery_cause_logged": true,
+    "efs_mount_errors": "Device or resource busy"
+  },
+  "lexicons": {
+    "Image_1_LMK": {
+      "category": "LMK Memory Configuration",
+      "properties": {
+        "ro.slmk.v_bonusEFK": "44073",
+        "ro.slmk.beks_enabled": "false",
+        "ro.slmk.cam_dha_vers3": "3",
+        "ro.slmk.dha_th_rate": "1600",
+        "ro.slmk.base_swapcost": "2500",
+        "ro.slmk.dha_empty_max": "20",
+        "ro.slmk.dha_empty_min": "8",
+        "ro.slmk.dha_cached_max": "10",
+        "ro.slmk.dha_cached_min": "8",
+        "ro.slmk.dha_lmk_scale": "0.509",
+        "ro.slmk.custom_ev": "250",
+        "ro.config.ringtone_2": "Atomic_Bell.ogg",
+        "ro.config.media_sound": "Media_preview_Touch"
+      },
+      "components": []
+    },
+    "Image_2_FS": {
+      "category": "Filesystem Directory Listing",
+      "properties": {},
+      "components": [
+        "recovery",
+        "dsms",
+        "nfc",
+        "usb_hw_param",
+        "gatekeeper",
+        "oem_5279",
+        "pfw_data"
+      ],
+      "notes": "Partition listing with timestamps; entries dated 2019-2025"
+    },
+    "Image_3_Init": {
+      "category": "Init System & Display Initialization",
+      "properties": {},
+      "components": [
+        "init",
+        "recovery",
+        "decon",
+        "decon_pa",
+        "display",
+        "kernel_version",
+        "wipe_data",
+        "wipe_cache",
+        "brightness"
+      ],
+      "notes": "Display resolution 2400x1080; kernel 4.14.113-2717665"
+    },
+    "Image_5_SysVendor": {
+      "category": "System & Vendor Build Props",
+      "properties": {
+        "ro.system_ext.build.version.sdk": "33",
+        "ro.system_ext.build.fingerprint": "samsung/a51ue/a51u:13/TP1A.220624.014/A515U1UESCFXA2:user/release-keys",
+        "ro.vendor.build.date.utc": "1706799460",
+        "ro.vendor.api_level": "29",
+        "ro.vendor.board_platform": "exynos9611",
+        "ro.vendor.model": "SM-A515U1",
+        "ro.vendor.brand": "samsung",
+        "ro.vendor.product.cpu.abilist": "arm64-v8a, armeabi-v7a, armeabi"
+      },
+      "components": [],
+      "device_id": "SM-A515U1",
+      "soc": "exynos9611"
+    },
+    "Image_6_HWSetup": {
+      "category": "Hardware & Setupwizard Config",
+      "properties": {
+        "ro.setupwizard.mode": "OPTIONAL",
+        "ro.setupwizard.rotation_locked": "true",
+        "ro.hw.sys.color_saturation": "1.0",
+        "ro.sf.lcd_density": "420",
+        "ro.hw.use_hwc_services": "true",
+        "ro.boot.hardware": "exynos9611",
+        "ro.product.manufacturer": "Samsung",
+        "security.perf_harden": "1",
+        "ro.secure": "1"
+      },
+      "components": [],
+      "security_notes": "perf_harden enabled, secure flag set"
+    },
+    "Image_7_Dalvik": {
+      "category": "Dalvik VM & Runtime Configuration",
+      "properties": {
+        "dalvik.vm.lockprof.threshold": "500",
+        "dalvik.vm.dex2oat-ams": "64m",
+        "dalvik.vm.dex2oat-Xmx": "512m",
+        "dalvik.vm.heapsize": "512m",
+        "dalvik.vm.heapstartsize": "8m",
+        "dalvik.vm.heapminfree": "512k",
+        "dalvik.vm.appimageformat": "lz4",
+        "log.level": "0xFFFFFFF0"
+      },
+      "components": [],
+      "runtime_notes": "512MB heap; lz4 compression for app images"
+    },
+    "Image_8_Boot": {
+      "category": "Boot Parameters & Security",
+      "properties": {
+        "ro.boot.rp": "12",
+        "ro.boot.sb.debug": "0x0",
+        "ro.boot.flash.locked": "1",
+        "ro.boot.other.locked": "1",
+        "ro.boot.vbmeta.size": "17088",
+        "ro.boot.vbmeta.digest": "dad1466dc7c3778a70046ba10",
+        "ro.boot.baseband": "shannon",
+        "ro.boot.hardware": "exynos9611",
+        "ro.boot.bootloader": "A515U1UESCFXA2"
+      },
+      "components": [
+        "vbmeta",
+        "baseband"
+      ],
+      "security_notes": "Flash LOCKED; other partitions LOCKED; vbmeta verified"
+    },
+    "Image_9_Build": {
+      "category": "Build Identity & Version",
+      "properties": {
+        "ro.build.tags": "release-keys",
+        "ro.build.type": "user",
+        "ro.build.flavor": "a51ue-user",
+        "ro.build.product": "a51",
+        "ro.build.version.sdk": "33",
+        "ro.build.version.release": "13",
+        "ro.build.version.codename": "REL",
+        "ro.build.id": "TPIA.220624.014",
+        "ro.build.date.utc": "1706799460",
+        "ro.build.date": "Thu Feb 1 23:57:40 KST 2024",
+        "ro.build.security_patch": "2024-01-01"
+      },
+      "components": [],
+      "build_notes": "OneUI; Feb 2024 build; KST timezone"
+    },
+    "Image_10_UI": {
+      "category": "Recovery UI & Display Text",
+      "properties": {},
+      "components": [
+        "lcd panel",
+        "s6e3",
+        "decon",
+        "decon_pa",
+        "brightness",
+        "erasing_text",
+        "command_text",
+        "error_text",
+        "wipe_data_text",
+        "factory_data_reset_text",
+        "try_again_text",
+        "wipe_data_confirmation_text"
+      ],
+      "display_notes": "Panel: s6e3; brightness 120; 2400x1080"
+    }
+  }
+}

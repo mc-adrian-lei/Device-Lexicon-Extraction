@@ -1,0 +1,10 @@
+Image,Properties,Components,Category,Key Namespaces
+Image_1_LMK.jpg,13,0,LMK config,"ro.slmk.*, ro.config.*"
+Image_2_FS.jpg,0,1,Filesystem listing,recovery
+Image_3_Init.jpg,0,8,Init & display,"decon, recovery, wipe_*, kernel"
+Image_5_SysVendor.jpg,9,0,System/vendor props,"ro.system_ext.*, ro.vendor.*"
+Image_6_HWSetup.jpg,9,0,HW & setupwizard,"ro.setupwizard.*, ro.hw.*, ro.boot.*"
+Image_7_Dalvik.jpg,8,0,Dalvik VM config,"dalvik.vm.*, log.*"
+Image_8_Boot.jpg,9,2,Boot parameters,"ro.boot.*, vbmeta, baseband"
+Image_9_Build.jpg,11,0,Build identity,"ro.build.*, release, codename"
+Image_10_UI.jpg,0,9,Recovery UI,"lcd panel, decon, brightness, factory_reset"

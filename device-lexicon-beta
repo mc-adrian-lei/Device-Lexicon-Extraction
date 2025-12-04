@@ -1,0 +1,757 @@
+# device_lexicon_proto: Enhanced Beta Package
+
+This is a refined, testable Python prototype for extracting and lexicalizing Android device properties from OCR'd recovery logs. The structure follows modern Python packaging standards and is designed for iterative improvement.
+
+---
+
+## Project Structure
+
+```
+device_lexicon_proto/
+├── device_lexicon/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── ocr.py
+│   ├── preprocess.py
+│   ├── parser.py
+│   ├── lexicon.py
+│   ├── cli.py
+│   └── utils.py
+├── tests/
+│   ├── test_ocr.py
+│   ├── test_parser.py
+│   ├── test_lexicon.py
+│   └── test_preprocess.py
+├── images/
+├── output/
+├── pyproject.toml
+├── README.md
+└── .gitignore
+```
+
+---
+
+## Enhanced Core Modules
+
+### `config.py`
+
+Extends the original with image preprocessing, OCR engine fallback, and logging configuration:
+
+```python
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional, List
+from enum import Enum
+
+class OCREngine(Enum):
+    TESSERACT = "tesseract"
+    EASYOCR = "easyocr"
+
+class PSMMode(Enum):
+    """Tesseract Page Segmentation Modes"""
+    RAW_LINE = 3
+    UNIFORM_BLOCK = 6  # Default for recovery logs
+    SPARSE_TEXT = 11
+
+@dataclass
+class PreprocessConfig:
+    """Image preprocessing options to improve OCR accuracy"""
+    grayscale: bool = True
+    binarize: bool = True
+    threshold: int = 127
+    denoise: bool = False
+    deskew: bool = False
+    contrast_enhancement: bool = False
+
+@dataclass
+class OCRConfig:
+    language: str = "eng"
+    engine: OCREngine = OCREngine.TESSERACT
+    psm: PSMMode = PSMMode.UNIFORM_BLOCK
+    oem: int = 3  # Combined legacy + LSTM
+    preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
+    
+    # Fallback strategy
+    fallback_engine: Optional[OCREngine] = OCREngine.EASYOCR
+    confidence_threshold: float = 0.5
+    
+    # Output configuration
+    include_confidence: bool = True
+    include_bboxes: bool = False
+
+@dataclass
+class ProjectPaths:
+    root: Path
+    images_dir: Path
+    output_dir: Path
+    logs_dir: Path
+    
+    @classmethod
+    def from_root(cls, root: Path) -> "ProjectPaths":
+        return cls(
+            root=root,
+            images_dir=root / "images",
+            output_dir=root / "output",
+            logs_dir=root / "logs",
+        )
+    
+    def ensure_dirs(self) -> None:
+        """Create all necessary directories"""
+        for d in [self.images_dir, self.output_dir, self.logs_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+```
+
+### `preprocess.py` (New)
+
+Image preprocessing pipeline to maximize OCR accuracy:
+
+```python
+import cv2
+import numpy as np
+from pathlib import Path
+from typing import Optional
+from .config import PreprocessConfig
+
+class ImagePreprocessor:
+    def __init__(self, cfg: PreprocessConfig):
+        self.cfg = cfg
+    
+    def to_grayscale(self, img: np.ndarray) -> np.ndarray:
+        """Convert BGR to grayscale"""
+        if len(img.shape) == 3:
+            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return img
+    
+    def binarize(self, img: np.ndarray) -> np.ndarray:
+        """Apply threshold binarization"""
+        if len(img.shape) == 3:
+            img = self.to_grayscale(img)
+        _, binary = cv2.threshold(img, self.cfg.threshold, 255, cv2.THRESH_BINARY)
+        return binary
+    
+    def denoise(self, img: np.ndarray) -> np.ndarray:
+        """Remove noise using morphological operations"""
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        cleaned = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
+        return cleaned
+    
+    def enhance_contrast(self, img: np.ndarray) -> np.ndarray:
+        """CLAHE (Contrast Limited Adaptive Histogram Equalization)"""
+        if len(img.shape) == 3:
+            img = self.to_grayscale(img)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        return clahe.apply(img)
+    
+    def deskew(self, img: np.ndarray) -> np.ndarray:
+        """Detect and correct skew"""
+        if len(img.shape) == 3:
+            img = self.to_grayscale(img)
+        coords = np.column_stack(np.where(img < 250))
+        angle = cv2.minAreaRect(cv2.convexHull(coords))[-1]
+        if angle < -45:
+            angle = 90 + angle
+        (h, w) = img.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        return cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REFLECT)
+    
+    def process(self, img: np.ndarray) -> np.ndarray:
+        """Apply configured preprocessing pipeline"""
+        if self.cfg.grayscale:
+            img = self.to_grayscale(img)
+        if self.cfg.deskew:
+            img = self.deskew(img)
+        if self.cfg.contrast_enhancement:
+            img = self.enhance_contrast(img)
+        if self.cfg.denoise:
+            img = self.denoise(img)
+        if self.cfg.binarize:
+            img = self.binarize(img)
+        return img
+    
+    def process_file(self, image_path: Path) -> np.ndarray:
+        """Load, process, and return image"""
+        img = cv2.imread(str(image_path))
+        if img is None:
+            raise FileNotFoundError(f"Cannot load image: {image_path}")
+        return self.process(img)
+```
+
+### `ocr.py` (Enhanced)
+
+Dual-engine OCR with fallback, confidence tracking, and structured output:
+
+```python
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+import logging
+from .config import OCRConfig, OCREngine
+from .preprocess import ImagePreprocessor
+import cv2
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class OCRResult:
+    """Structured OCR output with metadata"""
+    text: str
+    engine: str
+    confidence: float
+    raw_lines: List[str]
+    processed_image: Optional[np.ndarray] = None
+
+def run_ocr_on_image(
+    image_path: Path, 
+    cfg: OCRConfig,
+    save_processed: bool = False
+) -> OCRResult:
+    """
+    Run OCR with preprocessing and fallback strategy.
+    
+    Args:
+        image_path: Path to image file
+        cfg: OCR configuration
+        save_processed: Save preprocessed image for inspection
+    
+    Returns:
+        OCRResult with text, engine, confidence, and raw lines
+    """
+    # Load and preprocess
+    preprocessor = ImagePreprocessor(cfg.preprocess)
+    try:
+        img = preprocessor.process_file(image_path)
+    except Exception as e:
+        logger.error(f"Preprocessing failed for {image_path}: {e}")
+        raise
+    
+    # Try primary OCR engine
+    result = None
+    try:
+        if cfg.engine == OCREngine.TESSERACT:
+            result = _run_tesseract(image_path, img, cfg)
+        elif cfg.engine == OCREngine.EASYOCR:
+            result = _run_easyocr(image_path, img, cfg)
+    except Exception as e:
+        logger.warning(f"Primary OCR engine ({cfg.engine.value}) failed: {e}")
+    
+    # Fallback to secondary engine
+    if result is None and cfg.fallback_engine:
+        try:
+            logger.info(f"Falling back to {cfg.fallback_engine.value}")
+            if cfg.fallback_engine == OCREngine.TESSERACT:
+                result = _run_tesseract(image_path, img, cfg)
+            elif cfg.fallback_engine == OCREngine.EASYOCR:
+                result = _run_easyocr(image_path, img, cfg)
+        except Exception as e:
+            logger.error(f"Fallback OCR engine failed: {e}")
+    
+    if result is None:
+        raise RuntimeError(f"All OCR engines failed for {image_path}")
+    
+    if save_processed:
+        result.processed_image = img
+    
+    return result
+
+def _run_tesseract(
+    image_path: Path, 
+    img: np.ndarray, 
+    cfg: OCRConfig
+) -> OCRResult:
+    """Run Tesseract OCR"""
+    try:
+        import pytesseract
+    except ImportError:
+        raise ImportError("pytesseract not installed. Run: pip install pytesseract")
+    
+    # Build config string
+    config_str = f"--oem {cfg.oem} --psm {cfg.psm.value}"
+    
+    text = pytesseract.image_to_string(img, config=config_str, lang=cfg.language)
+    
+    if cfg.include_confidence:
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, 
+                                         config=config_str, lang=cfg.language)
+        confidences = [int(c) for c in data['conf'] if int(c) > 0]
+        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+    else:
+        avg_confidence = 1.0
+    
+    raw_lines = text.split('\n')
+    
+    return OCRResult(
+        text=text,
+        engine="tesseract",
+        confidence=avg_confidence / 100.0,
+        raw_lines=raw_lines
+    )
+
+def _run_easyocr(
+    image_path: Path, 
+    img: np.ndarray, 
+    cfg: OCRConfig
+) -> OCRResult:
+    """Run EasyOCR as fallback"""
+    try:
+        import easyocr
+    except ImportError:
+        raise ImportError("easyocr not installed. Run: pip install easyocr")
+    
+    reader = easyocr.Reader([cfg.language], gpu=False)
+    results = reader.readtext(str(image_path))
+    
+    text_lines = []
+    confidences = []
+    for detection in results:
+        _, text, conf = detection
+        text_lines.append(text)
+        if cfg.include_confidence:
+            confidences.append(conf)
+    
+    text = '\n'.join(text_lines)
+    avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+    
+    return OCRResult(
+        text=text,
+        engine="easyocr",
+        confidence=avg_confidence,
+        raw_lines=text_lines
+    )
+
+def batch_ocr(image_paths: List[Path], cfg: OCRConfig) -> Dict[str, OCRResult]:
+    """Process multiple images"""
+    results = {}
+    for i, path in enumerate(image_paths, 1):
+        logger.info(f"Processing {i}/{len(image_paths)}: {path.name}")
+        try:
+            results[path.name] = run_ocr_on_image(path, cfg)
+        except Exception as e:
+            logger.error(f"Failed to process {path}: {e}")
+    return results
+```
+
+### `parser.py` (Enhanced)
+
+More robust parsing for Android recovery logs with pattern matching and validation:
+
+```python
+from dataclasses import dataclass
+from typing import Optional, List, Pattern
+import re
+from enum import Enum
+
+class PropertyPrefix(Enum):
+    """Valid Android property prefixes"""
+    READ_ONLY = "ro."
+    READONLY_BOOT = "ro.boot."
+    READONLY_VENDOR = "ro.vendor."
+    DALVIK = "dalvik."
+    PERSIST = "persist."
+    SYS = "sys."
+    NET = "net."
+
+@dataclass
+class PropEntry:
+    key: str
+    value: str
+    source_line: str
+    prefix: PropertyPrefix
+    timestamp: Optional[str] = None
+    line_number: int = 0
+
+class AndroidLogParser:
+    """Parse Android recovery logs with timestamps and context"""
+    
+    # Timestamp pattern: [ 1.234567] or [HH:MM:SS.mmm]
+    TIMESTAMP_PATTERN = re.compile(r'\[\s*[\d.]+\s*\]|\[[\d:]+\.[\d]+\]')
+    
+    # Property pattern: key=value
+    PROPERTY_PATTERN = re.compile(r'^([a-z0-9_.]+)\s*=\s*(.+)$', re.IGNORECASE)
+    
+    VALID_PREFIXES = {p.value for p in PropertyPrefix}
+    
+    @classmethod
+    def parse_prop_line(cls, line: str, line_num: int = 0) -> Optional[PropEntry]:
+        """
+        Parse a single line into a property entry.
+        Handles timestamps and validates property format.
+        """
+        line = line.strip()
+        if not line:
+            return None
+        
+        # Extract timestamp if present
+        ts_match = cls.TIMESTAMP_PATTERN.match(line)
+        timestamp = ts_match.group(0) if ts_match else None
+        
+        # Remove timestamp for parsing
+        content = cls.TIMESTAMP_PATTERN.sub('', line).strip()
+        
+        # Try to parse as property
+        prop_match = cls.PROPERTY_PATTERN.match(content)
+        if not prop_match:
+            return None
+        
+        key, value = prop_match.groups()
+        key = key.strip()
+        value = value.strip()
+        
+        # Validate prefix
+        prefix_match = None
+        for valid_prefix in sorted(cls.VALID_PREFIXES, key=len, reverse=True):
+            if key.startswith(valid_prefix):
+                prefix_match = PropertyPrefix(valid_prefix)
+                break
+        
+        if not prefix_match:
+            return None
+        
+        return PropEntry(
+            key=key,
+            value=value,
+            source_line=line,
+            prefix=prefix_match,
+            timestamp=timestamp,
+            line_number=line_num
+        )
+    
+    @classmethod
+    def parse_text_block(cls, text: str) -> List[PropEntry]:
+        """Parse entire text block and extract all valid properties"""
+        properties = []
+        for line_num, line in enumerate(text.splitlines(), 1):
+            prop = cls.parse_prop_line(line, line_num)
+            if prop:
+                properties.append(prop)
+        return properties
+```
+
+### `lexicon.py` (Enhanced)
+
+Improved lexicon building with property categorization and token analytics:
+
+```python
+from collections import defaultdict, Counter
+from dataclasses import dataclass, field
+from typing import Dict, List, Set
+from .parser import AndroidLogParser, PropEntry, PropertyPrefix
+
+@dataclass
+class ImageLexicon:
+    """Structured lexicon for a single image/device"""
+    image_name: str
+    properties: Dict[str, str] = field(default_factory=dict)
+    tokens: List[str] = field(default_factory=list)
+    properties_by_prefix: Dict[str, Dict[str, str]] = field(default_factory=lambda: defaultdict(dict))
+    token_frequencies: Dict[str, int] = field(default_factory=dict)
+    excluded_tokens: Set[str] = field(default_factory=set)
+    
+    def to_dict(self):
+        """Serialize lexicon to dictionary"""
+        return {
+            "image": self.image_name,
+            "total_properties": len(self.properties),
+            "properties": self.properties,
+            "properties_by_prefix": {k: dict(v) for k, v in self.properties_by_prefix.items()},
+            "tokens": list(set(self.tokens)),
+            "token_count": len(set(self.tokens)),
+            "token_frequencies": self.token_frequencies,
+            "top_tokens": Counter(self.tokens).most_common(10),
+        }
+
+class LexiconBuilder:
+    """Build lexicons from OCR text using structured parsing"""
+    
+    # Common non-semantic tokens to exclude
+    COMMON_STOPWORDS = {
+        "the", "and", "or", "a", "an", "is", "are", "was", "were",
+        "in", "on", "at", "to", "from", "of", "for", "with", "by",
+        "i", "o", "e", "x", "null", "none", "error", "ok", "done"
+    }
+    
+    MIN_TOKEN_LENGTH = 3
+    
+    @classmethod
+    def build_from_text(cls, image_name: str, text: str) -> ImageLexicon:
+        """Build lexicon from raw OCR text"""
+        lex = ImageLexicon(image_name=image_name)
+        
+        # Parse properties using structured parser
+        properties = AndroidLogParser.parse_text_block(text)
+        
+        for prop in properties:
+            lex.properties[prop.key] = prop.value
+            prefix_key = prop.prefix.value
+            lex.properties_by_prefix[prefix_key][prop.key] = prop.value
+        
+        # Extract and analyze tokens
+        tokens = cls._tokenize_text(text)
+        lex.tokens = tokens
+        lex.token_frequencies = dict(Counter(tokens))
+        
+        return lex
+    
+    @classmethod
+    def _tokenize_text(cls, text: str) -> List[str]:
+        """Extract meaningful tokens from text"""
+        tokens = []
+        # Split on whitespace and common delimiters
+        raw_tokens = re.split(r'[\s\[\]:,()]+', text.lower())
+        
+        for token in raw_tokens:
+            # Clean and validate
+            token = token.strip('."\'')
+            
+            # Skip empty, too short, or common words
+            if (not token or 
+                len(token) < cls.MIN_TOKEN_LENGTH or 
+                token in cls.COMMON_STOPWORDS):
+                continue
+            
+            # Skip if looks like garbage
+            if cls._is_noise(token):
+                continue
+            
+            tokens.append(token)
+        
+        return tokens
+    
+    @classmethod
+    def _is_noise(cls, token: str) -> bool:
+        """Heuristic to detect noise tokens"""
+        # All punctuation or numbers
+        if all(c in '0123456789._-' for c in token):
+            return True
+        # Mostly special characters
+        special_count = sum(1 for c in token if not c.isalnum())
+        if special_count / len(token) > 0.5:
+            return True
+        return False
+```
+
+### `cli.py` (Enhanced)
+
+Improved CLI with logging, error handling, and detailed reporting:
+
+```python
+import json
+import logging
+import sys
+from pathlib import Path
+from typing import Optional
+import argparse
+
+from .config import OCRConfig, ProjectPaths, PreprocessConfig, OCREngine
+from .ocr import batch_ocr
+from .lexicon import LexiconBuilder
+from .parser import AndroidLogParser
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("device_lexicon.log")
+    ]
+)
+logger = logging.getLogger(__name__)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Extract and lexicalize Android device properties from recovery logs"
+    )
+    parser.add_argument(
+        '--root', 
+        type=Path, 
+        default=Path('.'),
+        help="Project root directory"
+    )
+    parser.add_argument(
+        '--engine',
+        choices=['tesseract', 'easyocr'],
+        default='tesseract',
+        help="OCR engine to use"
+    )
+    parser.add_argument(
+        '--preprocess',
+        action='store_true',
+        help="Enable image preprocessing"
+    )
+    parser.add_argument(
+        '--save-processed',
+        action='store_true',
+        help="Save preprocessed images for inspection"
+    )
+    args = parser.parse_args()
+    
+    root = args.root.resolve()
+    paths = ProjectPaths.from_root(root)
+    paths.ensure_dirs()
+    
+    logger.info(f"Starting device lexicon extraction from {root}")
+    
+    # Find images
+    images = sorted(paths.images_dir.glob("*.jpg")) + sorted(paths.images_dir.glob("*.png"))
+    if not images:
+        logger.error(f"No images found in {paths.images_dir}")
+        return
+    
+    logger.info(f"Found {len(images)} images to process")
+    
+    # Configure OCR
+    ocr_cfg = OCRConfig(
+        engine=OCREngine(args.engine),
+        preprocess=PreprocessConfig() if args.preprocess else PreprocessConfig(
+            grayscale=True, 
+            binarize=False,  # Disable binarize by default
+            denoise=False, 
+            deskew=False
+        )
+    )
+    
+    # Run OCR
+    logger.info(f"Running {args.engine} OCR...")
+    ocr_results = batch_ocr(images, ocr_cfg)
+    
+    # Build lexicons
+    logger.info("Building lexicons...")
+    all_lexicons = {}
+    for name, ocr_result in ocr_results.items():
+        logger.debug(f"Processing {name} (confidence: {ocr_result.confidence:.2f})")
+        lex = LexiconBuilder.build_from_text(name, ocr_result.text)
+        all_lexicons[name] = lex.to_dict()
+    
+    # Save output
+    output_file = paths.output_dir / "lexicons.json"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(all_lexicons, f, indent=2)
+    logger.info(f"Lexicons saved to {output_file}")
+    
+    # Summary report
+    total_props = sum(lex['total_properties'] for lex in all_lexicons.values())
+    logger.info(f"Extracted {total_props} total properties from {len(all_lexicons)} images")
+
+if __name__ == "__main__":
+    main()
+```
+
+### `pyproject.toml`
+
+```toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "device-lexicon-proto"
+version = "0.1.0"
+description = "Extract and lexicalize Android device properties from OCR'd recovery logs"
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "pytesseract>=0.3.10",
+    "easyocr>=1.6.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "isort>=5.12",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+device-lexicon = "device_lexicon.cli:main"
+```
+
+### `.gitignore`
+
+```
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Project-specific
+images/*.jpg
+images/*.png
+output/
+logs/
+*.log
+.DS_Store
+```
+
+---
+
+## Usage
+
+1. **Initialize repository:**
+   ```bash
+   git init device_lexicon_proto
+   cd device_lexicon_proto
+   # Copy structure above
+   ```
+
+2. **Install in development mode:**
+   ```bash
+   pip install -e ".[dev]"
+   ```
+
+3. **Place recovery log images:**
+   ```bash
+   cp /path/to/recovery_*.jpg images/
+   ```
+
+4. **Run extraction:**
+   ```bash
+   device-lexicon --engine tesseract --preprocess
+   ```
+
+5. **Check output:**
+   ```bash
+   cat output/lexicons.json | jq .
+   ```
+
+---
+
+## Key Improvements Over Initial Skeleton
+
+| Feature | Initial | Enhanced |
+|---------|---------|----------|
+| **Image Preprocessing** | None | Full pipeline: grayscale, binarize, denoise, deskew, contrast |
+| **OCR Fallback** | Single engine | Dual-engine with fallback strategy |
+| **Confidence Tracking** | Not included | Confidence scores per result |
+| **Property Parsing** | Regex-based | Structured parser with validation and prefix categorization |
+| **Tokenization** | Basic split | Intelligent tokenization with stopword filtering |
+| **CLI** | Minimal | Full argparse with options for preprocessing, engines |
+| **Logging** | None | Comprehensive logging to file and console |
+| **Output Structure** | Flat JSON | Hierarchical, queryable structure with analytics |
+| **Error Handling** | Basic | Graceful fallbacks and detailed error messages |
+| **Testing Framework** | Placeholder | Ready for pytest integration |
+
+---
+
+## Next Steps
+
+1. **Implement tests:** Use `pytest` to validate parser, lexicon builder, and OCR modules
+2. **Tune OCR:** Profile preprocessing on your recovery images; toggle grayscale/binarize/denoise based on accuracy
+3. **Extend parser:** Add custom patterns for device-specific properties (vendor extensions, custom keys)
+4. **Build analytics:** Query lexicons to identify device signatures, firmware versions, manufacturer patterns
+5. **Dockerize:** Wrap in Docker to standardize Tesseract + OpenCV deployment
+
+This structure is modular, testable, and ready for you to drop into a GitHub repo and iterate.
