@@ -1,0 +1,41 @@
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FOUNDATIONAL SPECTRUM MATRIX                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+LAYER 1: SERIALIZATION & TRANSPORT
+├─ TypeCore: State Externalization
+├─ Specs: {format, schema, encoding, transport, batch-processing}
+├─ Function: Internal → External Representation
+└─ Directionality: Content Outbound
+
+LAYER 2: INFORMATION ACCESS & QUERY
+├─ TypeCore: Knowledge Retrieval & Relation
+├─ Specs: {syntax, scope, filters, ranking, depth, temporal-bounds}
+├─ Function: Stored State → Accessible Knowledge
+└─ Directionality: Knowledge Inbound/Navigational
+
+LAYER 3: PRESENTATION & RENDERING
+├─ TypeCore: Perceptual Interface
+├─ Specs: {layout, encoding, device-target, accessibility, parsing}
+├─ Function: Accessible Knowledge → Consumable Form
+└─ Directionality: Content to Sensory/Computational Interface
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                     SPECTRUM FLOW TOPOLOGY                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+UNIDIRECTIONAL CASCADE (Sequential):
+Internal State 
+  ↓ [Serialization specs applied]
+  ↓ Serialized Content
+  ↓ [Query specs applied]
+  ↓ Retrieved/Related Knowledge
+  ↓ [Rendering specs applied]
+  ↓ Perceptual/Computational Output
+
+BIDIRECTIONAL COUPLING (Recursive):
+Rendering constraints ← inform → Serialization choices
+Query depth → determines → Serialization granularity
+Transport capacity ← limits
+→ Rendering resolution
+
