@@ -1,0 +1,630 @@
+# Device Lexicon Proto: Integration into Foundational Spectrum Matrix
+
+## Executive Framework Mapping
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│         DEVICE_LEXICON_PROTO WITHIN SPECTRUM MATRIX                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## LAYER 1: SERIALIZATION & TRANSPORT
+### TypeCore: State Externalization
+
+**Device Lexicon Entry Point: OCR → JSON Serialization**
+
+```
+Internal State (Raw Recovery Image)
+  ↓
+  [preprocess.py: Image → Standardized Format]
+  ↓
+  [ocr.py: Visual Content → Text Extraction]
+  ↓
+  [parser.py: Unstructured Text → Structured PropEntry]
+  ↓
+  [lexicon.py: PropEntry → ImageLexicon (Typed State)]
+  ↓
+SERIALIZED CONTENT (lexicons.json)
+```
+
+### Specs Applied
+
+| Spec Category | Device Lexicon Implementation | Purpose |
+|---|---|---|
+| **format** | JSON | Machine-readable, query-compatible |
+| **schema** | ImageLexicon dataclass | Type-safe, versioned property structure |
+| **encoding** | UTF-8 (default) | Unicode support for device identifiers, paths |
+| **transport** | File (JSON), Stdout (streaming), HTTP (future) | Flexible outbound directionality |
+| **batch-processing** | `batch_ocr()`, parallel image processing | Horizontal scaling for multiple devices |
+
+### Serialization Hierarchy (Granularity Levels)
+
+```python
+Level 0 (Raw):
+  Raw OCR text with confidence metadata
+
+Level 1 (Structured):
+  PropEntry objects with prefix categorization, timestamps, line numbers
+  {
+    "key": "ro.build.version.release",
+    "value": "14",
+    "prefix": "ro.",
+    "timestamp": "[1.234567]",
+    "line_number": 42
+  }
+
+Level 2 (Aggregated Lexicon):
+  ImageLexicon with property groupings, token frequencies
+  {
+    "image": "recovery_001.jpg",
+    "properties": {...},
+    "properties_by_prefix": {"ro.": {...}, "ro.boot.": {...}},
+    "token_frequencies": {...}
+  }
+
+Level 3 (Queryable Index):
+  Cross-device signature database
+  {
+    "device_signature": "ro.product.manufacturer=Samsung&ro.build.version.release=14",
+    "frequency": 127,
+    "devices": ["device_001", "device_002", ...]
+  }
+```
+
+### Directionality: Content Outbound
+
+**Flow Path:**
+```
+Recovery Log Image (Input)
+  → Device Lexicon Proto (Processing)
+    → lexicons.json (Output)
+      → Query Layer (Consumption)
+        → Rendering Layer (Presentation)
+```
+
+**Transport Options:**
+- **File-based**: Write to `output/lexicons.json` for downstream systems
+- **Streaming**: Emit per-image lexicon as images are processed (backpressure handling)
+- **Message Queue**: Publish PropEntry events to Kafka/RabbitMQ for real-time processing
+- **Database**: Insert ImageLexicon records into PostgreSQL/MongoDB
+
+---
+
+## LAYER 2: INFORMATION ACCESS & QUERY
+### TypeCore: Knowledge Retrieval & Relation
+
+**Device Lexicon Entry Point: Query Interface on Serialized State**
+
+```python
+class LexiconQueryEngine:
+    """Entry point for Layer 2: Access & Retrieval"""
+    
+    def __init__(self, lexicons_path: Path):
+        """Load serialized lexicons from Layer 1"""
+        with open(lexicons_path) as f:
+            self.lexicons = json.load(f)
+    
+    # SYNTAX: What patterns can we search?
+    def search_property(self, key: str, fuzzy: bool = False) -> List[ImageLexicon]:
+        """Search by property key (exact or fuzzy match)"""
+        pass
+    
+    def search_value(self, pattern: str, regex: bool = False) -> List[PropEntry]:
+        """Search by property value (substring or regex)"""
+        pass
+    
+    # SCOPE: What is the search boundary?
+    def query_by_prefix(self, prefix: str) -> Dict[str, Dict[str, str]]:
+        """Limit query to specific property prefix (ro., dalvik., etc.)"""
+        pass
+    
+    def query_by_image(self, image_name: str) -> ImageLexicon:
+        """Single image scope"""
+        pass
+    
+    def query_cross_device(self, predicate: Callable) -> List[str]:
+        """Multi-device scope: find images matching predicate"""
+        pass
+    
+    # FILTERS: How do we narrow results?
+    def filter_by_confidence(self, min_confidence: float) -> List[ImageLexicon]:
+        """OCR confidence threshold"""
+        pass
+    
+    def filter_by_timestamp(self, start: str, end: str) -> List[PropEntry]:
+        """Temporal bounds on recovery logs"""
+        pass
+    
+    def filter_by_token_frequency(self, min_freq: int) -> List[str]:
+        """Token analytics: find significant markers"""
+        pass
+    
+    # RANKING: How do we order results?
+    def rank_by_property_frequency(self, property_key: str) -> List[Tuple[str, int]]:
+        """Devices ranked by property prevalence"""
+        pass
+    
+    def rank_by_confidence(self) -> List[Tuple[str, float]]:
+        """Images ranked by OCR confidence"""
+        pass
+    
+    # DEPTH: What related data do we include?
+    def expand_property_ancestry(self, key: str, depth: int = 2) -> Dict:
+        """Return property + related prefix chain + token context"""
+        pass
+    
+    def expand_device_signature(self, image_name: str, depth: int = 3) -> Dict:
+        """Return image properties → manufacturer patterns → similar devices"""
+        pass
+    
+    # TEMPORAL BOUNDS: Time-aware queries
+    def query_device_timeline(self, image_pattern: str) -> List[Tuple[int, ImageLexicon]]:
+        """If image names encode timestamps, retrieve temporal series"""
+        pass
+```
+
+### Entry Points to Layer 2
+
+**Direct Integration:**
+```python
+# From Layer 1 output (lexicons.json)
+query_engine = LexiconQueryEngine("output/lexicons.json")
+
+# Syntax: Find all ro.build properties
+build_props = query_engine.search_property("ro.build.*", fuzzy=True)
+
+# Scope: Only recovery_001.jpg
+img_lexicon = query_engine.query_by_image("recovery_001.jpg")
+
+# Filters: High-confidence devices only
+reliable_devices = query_engine.filter_by_confidence(min_confidence=0.85)
+
+# Ranking: Which device signature appears most?
+top_signature = query_engine.rank_by_property_frequency("ro.product.manufacturer")
+
+# Depth: Get full signature ancestry for device
+signature = query_engine.expand_device_signature("recovery_001.jpg", depth=3)
+
+# Temporal: Track device state across multiple recovery logs
+timeline = query_engine.query_device_timeline("recovery_*.jpg")
+```
+
+### Query Specs Implementation
+
+| Spec | Implementation | Example |
+|---|---|---|
+| **syntax** | Property key patterns, regex, fuzzy match | `search_property("ro.build.*")` |
+| **scope** | Single image, prefix, cross-device | `query_by_image()`, `query_by_prefix()`, `query_cross_device()` |
+| **filters** | Confidence, timestamp, frequency | `filter_by_confidence(0.85)`, `filter_by_timestamp()` |
+| **ranking** | Frequency, confidence, entropy | `rank_by_property_frequency()`, `rank_by_confidence()` |
+| **depth** | Ancestry expansion, signature depth | `expand_property_ancestry(depth=2)` |
+| **temporal-bounds** | Image timestamp extraction, series | `query_device_timeline()` |
+
+### Directionality: Knowledge Inbound/Navigational
+
+```
+Serialized Lexicons (Layer 1 Output)
+  ↓ [Query Specs: syntax, scope, filters, ranking, depth, temporal]
+  ↓
+Knowledge Graph (Property Relations, Signatures, Patterns)
+  ↓ [Navigation: "What devices have property X?"]
+  ↓
+Retrieved Results Set
+  ↓ [Pass to Layer 3 for Rendering]
+```
+
+---
+
+## LAYER 3: PRESENTATION & RENDERING
+### TypeCore: Perceptual Interface
+
+**Device Lexicon Entry Point: Result Formatting & Visualization**
+
+```python
+class LexiconRenderer:
+    """Entry point for Layer 3: Presentation"""
+    
+    def __init__(self, query_results: Any, device_target: str = "terminal"):
+        self.results = query_results
+        self.device_target = device_target  # terminal, html, json, csv, pdf
+    
+    # LAYOUT: How do we structure the output?
+    def render_table(self, properties: Dict[str, str]) -> str:
+        """Tabular layout for property inspection"""
+        pass
+    
+    def render_tree(self, lexicon: ImageLexicon, depth: int = 3) -> str:
+        """Hierarchical tree layout for property ancestry"""
+        pass
+    
+    def render_comparison(self, lexicons: List[ImageLexicon]) -> str:
+        """Side-by-side device comparison"""
+        pass
+    
+    def render_heatmap(self, frequency_matrix: Dict) -> str:
+        """Property prevalence heatmap across devices"""
+        pass
+    
+    # ENCODING: How do we represent data perceptually?
+    def encode_confidence_visual(self, confidence: float) -> str:
+        """Bar chart, color code, or emoji representation"""
+        # Example: ████░░░░░ 0.65 (65% OCR confidence)
+        pass
+    
+    def encode_property_highlight(self, prop: PropEntry, significance: float) -> str:
+        """Highlight significant properties (high token frequency, rare prefixes)"""
+        pass
+    
+    def encode_signature_compact(self, signature: Dict) -> str:
+        """Fingerprint-style representation of device signature"""
+        pass
+    
+    # DEVICE-TARGET: Rendering for different output formats
+    def to_terminal(self, colorize: bool = True) -> str:
+        """ANSI-colored terminal output with Unicode box-drawing"""
+        pass
+    
+    def to_html(self, embed_css: bool = True) -> str:
+        """Standalone HTML with inline styles"""
+        pass
+    
+    def to_json(self, pretty: bool = True) -> str:
+        """Queryable JSON for downstream systems"""
+        pass
+    
+    def to_csv(self) -> str:
+        """Tabular CSV for spreadsheet import"""
+        pass
+    
+    def to_pdf(self, landscape: bool = False) -> bytes:
+        """PDF report with device signatures and confidence metrics"""
+        pass
+    
+    def to_markdown(self) -> str:
+        """Markdown report for documentation/wiki"""
+        pass
+    
+    # ACCESSIBILITY: How do we ensure all users can interpret?
+    def with_alt_text(self, rendered: str) -> str:
+        """Add semantic descriptions for screen readers"""
+        pass
+    
+    def with_text_fallback(self, visual: str) -> str:
+        """Provide text alternative to visual encodings"""
+        pass
+    
+    def with_colorblind_mode(self, rendered: str, mode: str = "deuteranopia") -> str:
+        """Adjust color scheme for color blindness"""
+        pass
+    
+    # PARSING: How is the output consumed downstream?
+    def with_structure_markers(self, rendered: str) -> str:
+        """Add delimiters/markers for parsing by downstream tools"""
+        # Example: <PROPERTY_START>ro.build.version.release<PROPERTY_END>
+        pass
+```
+
+### Rendering Entry Points
+
+**Terminal Output (Interactive):**
+```python
+renderer = LexiconRenderer(query_results, device_target="terminal")
+print(renderer.to_terminal(colorize=True))
+# Output:
+# ┌─ Image: recovery_001.jpg ─────────────────┐
+# │ Confidence: ████████░░ 0.87               │
+# ├─ Properties by Prefix ────────────────────┤
+# │ ro. (5 entries)                            │
+# │   ├─ ro.build.version.release = 14        │
+# │   └─ ro.product.manufacturer = Samsung    │
+# │ dalvik. (3 entries)                        │
+# │   └─ dalvik.vm.heapsize = 512m            │
+# └────────────────────────────────────────────┘
+```
+
+**HTML Report (Documentation):**
+```python
+renderer = LexiconRenderer(query_results, device_target="html")
+with open("device_report.html", "w") as f:
+    f.write(renderer.to_html(embed_css=True))
+```
+
+**JSON for Downstream Pipelines:**
+```python
+renderer = LexiconRenderer(query_results, device_target="json")
+structured_json = renderer.to_json(pretty=True)
+# Pass to data warehousing, visualization tools, forensic platforms
+```
+
+**PDF Report (Compliance):**
+```python
+renderer = LexiconRenderer(query_results, device_target="pdf")
+pdf_bytes = renderer.to_pdf(landscape=True)
+# Generate audit trail, forensic report
+```
+
+### Specs Implementation
+
+| Spec | Implementation | Example |
+|---|---|---|
+| **layout** | Table, tree, comparison, heatmap | `render_table()`, `render_comparison()` |
+| **encoding** | ASCII bars, colors, emoji, compact fingerprint | `encode_confidence_visual()`, `encode_signature_compact()` |
+| **device-target** | Terminal, HTML, JSON, CSV, PDF, Markdown | `to_terminal()`, `to_pdf()`, `to_html()` |
+| **accessibility** | Alt text, colorblind mode, text fallback | `with_alt_text()`, `with_colorblind_mode()` |
+| **parsing** | Structure markers, delimiters for bot consumption | `with_structure_markers()` |
+
+### Directionality: Content to Sensory/Computational Interface
+
+```
+Query Results (Layer 2 Output)
+  ↓ [Rendering Specs: layout, encoding, device-target, accessibility, parsing]
+  ↓
+Rendered Output (Terminal, HTML, JSON, PDF, etc.)
+  ↓ [Perceptual/Computational Interface]
+  ↓
+Human (reads terminal/PDF) OR Bot (parses JSON/CSV)
+```
+
+---
+
+## BIDIRECTIONAL COUPLING & FEEDBACK LOOPS
+
+### Rendering Constraints ← inform → Serialization Choices
+
+```
+Terminal Output Width (80 chars) 
+  ← informs → 
+Serialize properties using compact keys (ro. → R, dalvik. → D)
+
+PDF Page Width (8.5 inches)
+  ← informs → 
+Truncate property values to 60 chars, add ellipsis
+
+CSV Import Constraints (flat rows, no nesting)
+  ← informs → 
+Serialize by flattening hierarchy: "ro.build.version.release" as key
+```
+
+**Implementation:**
+```python
+def serialize_with_rendering_hint(lex: ImageLexicon, target_format: str) -> Dict:
+    """Adjust serialization based on intended rendering"""
+    if target_format == "terminal":
+        # Use compact keys, limit depth
+        return {
+            "img": lex.image_name,
+            "props": {k[:30]: v[:40] for k, v in lex.properties.items()}
+        }
+    elif target_format == "csv":
+        # Flatten hierarchy
+        return [
+            {"key": k, "value": v, "image": lex.image_name}
+            for k, v in lex.properties.items()
+        ]
+    elif target_format == "pdf":
+        # Preserve full fidelity, sort for readability
+        return {
+            "image": lex.image_name,
+            "properties": dict(sorted(lex.properties.items()))
+        }
+```
+
+### Query Depth → determines → Serialization Granularity
+
+```
+Shallow Query (find devices with property X)
+  → needs Level 1 serialization (just keys/values)
+
+Deep Query (expand device signature ancestry)
+  → needs Level 3 serialization (all metadata: confidence, timestamps, line numbers)
+```
+
+**Implementation:**
+```python
+def serialize_by_query_depth(lex: ImageLexicon, query_depth: int) -> Dict:
+    """Adjust serialization granularity based on query depth"""
+    if query_depth == 1:
+        # Minimal
+        return {"image": lex.image_name, "properties": lex.properties}
+    elif query_depth == 2:
+        # Add metadata
+        return {
+            "image": lex.image_name,
+            "properties": lex.properties,
+            "properties_by_prefix": dict(lex.properties_by_prefix),
+            "token_frequencies": lex.token_frequencies
+        }
+    elif query_depth >= 3:
+        # Full fidelity with all context
+        return {
+            "image": lex.image_name,
+            "ocr_confidence": lex.ocr_confidence,
+            "properties": lex.properties,
+            "properties_by_prefix": dict(lex.properties_by_prefix),
+            "tokens": lex.tokens,
+            "token_frequencies": lex.token_frequencies,
+            "timestamp_extracted": lex.timestamp,
+            "device_signature": compute_signature(lex)
+        }
+```
+
+### Transport Capacity ← limits → Rendering Resolution
+
+```
+Bandwidth: 10 Mbps
+  ← limits → 
+Render at JSON (compressed), no large embedded images
+
+Bandwidth: 1 Gbps (local network)
+  ← allows → 
+Render full PDF with screenshots, comparison heatmaps, detailed traces
+```
+
+**Implementation:**
+```python
+def render_with_bandwidth_hint(results: Any, bandwidth_kbps: int, device_target: str) -> str:
+    """Optimize rendering for available transport capacity"""
+    if bandwidth_kbps < 100:
+        # Low bandwidth: minimal formatting, plain text
+        return render_minimal(results)
+    elif bandwidth_kbps < 1000:
+        # Medium: colored text, simple formatting
+        return renderer.to_terminal(colorize=True)
+    else:
+        # High bandwidth: full PDF with graphics
+        return renderer.to_pdf(landscape=True)
+```
+
+---
+
+## Integration Architecture Diagram
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                   EXTERNAL SYSTEMS / INPUTS                        │
+│                    (Recovery Log Images)                            │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │
+                           ↓
+┌────────────────────────────────────────────────────────────────────┐
+│          LAYER 1: SERIALIZATION & TRANSPORT                        │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ preprocess.py → ocr.py → parser.py → lexicon.py → cli.py   │  │
+│  │ [Image Input] → [Specs: format, schema, encoding] → [JSON] │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                           ↓ (lexicons.json)                         │
+└────────────────────────────────────────────────────────────────────┘
+                           │
+                           ↓
+┌────────────────────────────────────────────────────────────────────┐
+│        LAYER 2: INFORMATION ACCESS & QUERY                         │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ LexiconQueryEngine                                           │  │
+│  │ [Specs: syntax, scope, filters, ranking, depth, temporal]   │  │
+│  │ search_property() / query_by_image() / expand_device_*()    │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                           ↓ (Query Results)                         │
+└────────────────────────────────────────────────────────────────────┘
+                           │
+                           ↓
+┌────────────────────────────────────────────────────────────────────┐
+│       LAYER 3: PRESENTATION & RENDERING                            │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ LexiconRenderer                                              │  │
+│  │ [Specs: layout, encoding, device-target, accessibility]     │  │
+│  │ to_terminal() / to_html() / to_pdf() / to_csv() / to_json() │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                           ↓ (Rendered Output)                       │
+└────────────────────────────────────────────────────────────────────┘
+                           │
+            ┌──────────────┼──────────────┐
+            ↓              ↓              ↓
+       Terminal       HTML Report   JSON Feed
+      (Human UI)    (Documentation) (Downstream)
+      
+┌─────────────────────────────────────────────────────────┐
+│      BIDIRECTIONAL FEEDBACK LOOPS                       │
+├─────────────────────────────────────────────────────────┤
+│  Rendering constraints ← inform → Serialization        │
+│  Query depth → determines → Serialization granularity   │
+│  Transport capacity ← limits → Rendering resolution     │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Code Skeleton: Integration Points
+
+```python
+# main.py: Orchestrate all three layers with coupling
+
+from pathlib import Path
+from device_lexicon.ocr import batch_ocr
+from device_lexicon.lexicon import LexiconBuilder
+from query_engine import LexiconQueryEngine  # Layer 2 (NEW)
+from renderer import LexiconRenderer         # Layer 3 (NEW)
+
+def process_recovery_logs(
+    images_dir: Path,
+    output_format: str = "terminal",
+    query_depth: int = 2,
+    bandwidth_kbps: int = 10000,
+    target_device: str = "terminal"
+):
+    """Orchestrate all layers with feedback coupling"""
+    
+    # LAYER 1: Serialize
+    print("[Layer 1] Extracting device properties...")
+    ocr_results = batch_ocr(images_dir, config)
+    lexicons = [
+        LexiconBuilder.build_from_text(name, text)
+        for name, text in ocr_results.items()
+    ]
+    
+    # Apply serialization granularity based on downstream query_depth
+    serialized = [
+        lex.to_dict_with_depth(query_depth)
+        for lex in lexicons
+    ]
+    
+    output_file = Path("output/lexicons.json")
+    output_file.write_text(json.dumps(serialized, indent=2))
+    print(f"✓ Serialized {len(lexicons)} lexicons → {output_file}")
+    
+    # LAYER 2: Query
+    print(f"[Layer 2] Querying with depth={query_depth}...")
+    query_engine = LexiconQueryEngine(output_file)
+    
+    # Example queries
+    high_confidence = query_engine.filter_by_confidence(0.85)
+    device_signatures = query_engine.rank_by_property_frequency("ro.product.manufacturer")
+    
+    query_results = {
+        "high_confidence_devices": high_confidence,
+        "device_signatures": device_signatures
+    }
+    print(f"✓ Query complete: {len(query_results)} result sets")
+    
+    # LAYER 3: Render with bandwidth awareness
+    print(f"[Layer 3] Rendering to {output_format} (bandwidth: {bandwidth_kbps} kbps)...")
+    renderer = LexiconRenderer(query_results, device_target=target_device)
+    
+    if bandwidth_kbps < 100:
+        output = renderer.to_json()  # Minimal
+    elif output_format == "terminal":
+        output = renderer.to_terminal(colorize=True)
+    elif output_format == "pdf":
+        output = renderer.to_pdf()
+    elif output_format == "html":
+        output = renderer.to_html(embed_css=True)
+    else:
+        output = renderer.to_json()
+    
+    print(output)
+    print(f"✓ Render complete")
+    
+    return query_results, output
+
+if __name__ == "__main__":
+    process_recovery_logs(
+        images_dir=Path("images"),
+        output_format="terminal",
+        query_depth=2,
+        bandwidth_kbps=10000,
+        target_device="terminal"
+    )
+```
+
+---
+
+## Summary: Entry Points for Integration
+
+| Layer | Entry Point | Input | Output | Specs |
+|-------|---|---|---|---|
+| **Layer 1** | `batch_ocr()` + `LexiconBuilder.build_from_text()` | Images | `lexicons.json` | format, schema, encoding, transport, batch |
+| **Layer 2** | `LexiconQueryEngine` | `lexicons.json` | Query Results | syntax, scope, filters, ranking, depth, temporal |
+| **Layer 3** | `LexiconRenderer` | Query Results | Terminal/HTML/PDF/JSON | layout, encoding, device-target, accessibility, parsing |
+
+All three layers support **bidirectional coupling**: rendering constraints inform serialization, query depth determines granularity, and transport capacity limits resolution.
